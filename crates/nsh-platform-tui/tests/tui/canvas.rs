@@ -611,6 +611,15 @@ fn a_plots_marks_stay_inside_the_plot_and_off_its_padding() {
     view.load(App::Rust(Root::new::<PaddedPlot>(|| ())))
         .unwrap();
     draw_until(&mut view, &mut terminal, &rx, "drawn");
+    // The label can mount before the plot's layout-dependent drawing commits.
+    super::app::draw_until_true(&mut view, &mut terminal, &rx, "plot marks", |terminal| {
+        terminal.backend().buffer().content.iter().any(|cell| {
+            cell.symbol()
+                .chars()
+                .next()
+                .is_some_and(|c| ('\u{2801}'..='\u{28ff}').contains(&c))
+        })
+    });
     super::app::draw_until_still(&mut view, &mut terminal, &rx);
     let buffer = terminal.backend().buffer();
     let braille = |x: u16, y: u16| {
