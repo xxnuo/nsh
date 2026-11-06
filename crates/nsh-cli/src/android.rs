@@ -474,6 +474,14 @@ pub(crate) fn device_abis(sdk: &Sdk, serial: &str) -> anyhow::Result<Vec<String>
         .collect())
 }
 
+/// The first ABI the device prefers that this runtime supports.
+pub(crate) fn device_abi(sdk: &Sdk, serial: &str) -> anyhow::Result<String> {
+    device_abis(sdk, serial)?
+        .into_iter()
+        .find(|abi| ABIS.contains(&abi.as_str()))
+        .with_context(|| format!("{serial} runs none of {}", ABIS.join(", ")))
+}
+
 /// A port of the device forwarded to this machine (`adb reverse`), removed
 /// when dropped, however the command ends (Ctrl-C too: it is
 /// [`ui::Stoppable`] meanwhile): a dev host left on the device would

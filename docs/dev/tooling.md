@@ -517,6 +517,9 @@ test's side prints them under the step `Remote` took last (named as `Headless` n
 
 ### On a real platform (`--target`)
 
+Android Rust test hosts build the connected device’s preferred supported ABI,
+as `nsh run` does, so an emulator test does not compile phone-only libraries.
+
 `nsh test --target <platform>` runs the apps tests open on the platform's development host (`macos`, `linux`,
 `windows`, `gpui`, `tui`, `web`, `ios`, `android`); `--fps` (macOS, Linux, Windows and iOS) has the host log its performance
 monitor's readings once a second, shown with `-v` (`docs/dev/linux.md` "Performance", `docs/dev/windows.md`

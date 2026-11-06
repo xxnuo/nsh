@@ -442,10 +442,7 @@ fn run_rust_app(
             let serial = android::device(&sdk)?;
             let out = run.join("android");
             // The device's ABI alone: each one is a build of the app's crate.
-            let abi = android::device_abis(&sdk, &serial)?
-                .into_iter()
-                .find(|abi| android::ABIS.contains(&abi.as_str()))
-                .with_context(|| format!("{serial} runs none of {}", android::ABIS.join(", ")))?;
+            let abi = android::device_abi(&sdk, &serial)?;
             package_for_run(
                 &entry,
                 crate::package::PackageTarget::Android,
