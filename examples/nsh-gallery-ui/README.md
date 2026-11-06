@@ -10,6 +10,7 @@ and NSH's elements; it is maintained with these examples, rather than published 
 | `theme.ts` | Reactive palette roles, finish accessors, radii, focus/hover feedback and motion |
 | `index.tsx` | Shared buttons, cards, insets, badges, rows, switches, sheets and presentation helpers |
 | `look/button.ts` | What a button looks like, spread on `nsh/base`'s `Button` (or a pressable `View`): `buttonLook` (kinds, sizes, the selected, hover, pressed, focus and disabled states, the press's native sink, a hit slop to 44 points on touch screens), `buttonLabel`, `buttonGlyph`, `buttonSizes`, and the icon-only and round buttons' `iconButtonLook` / `roundButtonLook`; the gallery's `Button`, `RoundButton` and icon buttons and the demos' `button()` use it |
+| `look/press.ts` | A press's native feedback: `pressSink(scale)` (an `activeStyle` sinking the control, none with reduced motion, and the `style` transition that eases it), `pressTransition`, `pressEasing` (150 ms, ease-out); the button looks, `Press` and `tabPress` use it |
 | `popup.tsx` | The popup families' one surface and their enter motion (`PopIn`, `createPresence` for tooltips), and `MenuMark` / `menuIndicator`: a checkable menu item's check or dot and the indicator part it follows |
 | `segmented.tsx` | The segmented control shared by the gallery and demo inspectors |
 | `icons.tsx` | The common line icon set, `IconLabel` (an icon-only control's icon, its short label as text in the terminal), and `CheckMark`: the check of checkboxes, selects and menus as an SVG image |
