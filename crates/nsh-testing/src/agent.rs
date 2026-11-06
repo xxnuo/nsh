@@ -1436,6 +1436,25 @@ impl Agent {
             TestStep::Texts => Ok(Value::from(self.scene.texts()?)),
             TestStep::Count { selector } => Ok(Value::from(self.scene.count(&selector)?)),
             TestStep::Shows { selector } => Ok(Value::from(self.scene.matches(&selector)?)),
+            TestStep::Bounds { selector } => {
+                let bounds = match self.scene.pick(&selector, PickTarget::View)? {
+                    Pick::None => None,
+                    Pick::One(id) => {
+                        let id = self.scene.span(id)?.map_or(id, |(text, ..)| text);
+                        self.native.bounds(id)
+                    }
+                    Pick::Many(n) => {
+                        return Err(format!(
+                            "`{selector}` matches {n} views: say which (`{selector} >> nth=0`)"
+                        ));
+                    }
+                    Pick::Disabled => unreachable!("view queries include disabled views"),
+                };
+                serde_json::to_value(bounds).map_err(|e| e.to_string())
+            }
+            TestStep::Viewport => {
+                serde_json::to_value(self.native.viewport()).map_err(|e| e.to_string())
+            }
             TestStep::Enabled { selector } => Ok(Value::from(self.scene.enabled(&selector)?)),
             TestStep::SpanStyle { selector } => {
                 serde_json::to_value(self.scene.span_style(&selector)?).map_err(|e| e.to_string())
@@ -2241,11 +2260,16 @@ mod tests {
         undone: Vec<usize>,
         /// Where each gesture's finger landed, along the scroll view.
         landed: Arc<Mutex<Vec<f32>>>,
+        actions: Arc<Mutex<Vec<&'static str>>>,
     }
 
     impl Page {
         const LENGTH: f32 = 560.0;
         const CONTENT: f32 = 3000.0;
+
+        fn action(&self, name: &'static str) {
+            self.actions.lock().unwrap().push(name);
+        }
     }
 
     impl Native for Page {
@@ -2264,8 +2288,12 @@ mod tests {
         fn viewport(&self) -> Size<Points> {
             size(px(320.0), px(640.0))
         }
-        fn press(&self, _: Point<Points>) {}
-        fn long_press(&self, _: Point<Points>, _: Duration) {}
+        fn press(&self, _: Point<Points>) {
+            self.action("press");
+        }
+        fn long_press(&self, _: Point<Points>, _: Duration) {
+            self.action("long_press");
+        }
         fn scroll(&self, at: Point<Points>, delta: Point<Points>) {
             let mut landed = self.landed.lock().unwrap();
             landed.push(at.y.0);
@@ -2274,16 +2302,24 @@ mod tests {
                 *offset = (*offset + delta.y.0).clamp(0.0, Page::CONTENT - Page::LENGTH);
             }
         }
-        fn drag(&self, _: Point<Points>, _: Point<Points>) {}
-        fn type_text(&self, _: &str) {}
-        fn key(&self, _: Key) {}
+        fn drag(&self, _: Point<Points>, _: Point<Points>) {
+            self.action("drag");
+        }
+        fn type_text(&self, _: &str) {
+            self.action("type_text");
+        }
+        fn key(&self, _: Key) {
+            self.action("key");
+        }
         fn input_text(&self, _: NodeId) -> Option<String> {
             None
         }
         fn back(&self) -> Result<(), String> {
+            self.action("back");
             Ok(())
         }
         fn answer_dialog(&self, _: Option<&str>) -> Result<(), String> {
+            self.action("answer_dialog");
             Ok(())
         }
         fn animating(&self) -> bool {
@@ -2293,12 +2329,121 @@ mod tests {
             Ok(Vec::new())
         }
         fn resize(&self, _: Points, _: Points) -> Result<(), String> {
+            self.action("resize");
             Ok(())
         }
         fn set_dark(&self, _: bool) -> Result<(), String> {
+            self.action("set_dark");
             Ok(())
         }
-        fn quit(&self) {}
+        fn quit(&self) {
+            self.action("quit");
+        }
+    }
+
+    #[test]
+    fn geometry_queries_use_native_bounds_without_scrolling_in_local_and_remote_scenes() {
+        use nsh_core::{MountItem, ViewKind};
+        let model = Arc::new(Model::default());
+        model.apply(&MountBatch {
+            items: vec![
+                MountItem::Create {
+                    id: 2,
+                    kind: ViewKind::Scroll,
+                },
+                MountItem::Create {
+                    id: 4,
+                    kind: ViewKind::View,
+                },
+                MountItem::Create {
+                    id: 6,
+                    kind: ViewKind::View,
+                },
+                MountItem::Frame {
+                    id: 2,
+                    frame: Bounds::new(point(px(0.0), px(0.0)), size(px(320.0), px(560.0))),
+                },
+                MountItem::Frame {
+                    id: 4,
+                    frame: Bounds::new(point(px(0.0), px(900.0)), size(px(320.0), px(40.0))),
+                },
+                MountItem::Frame {
+                    id: 6,
+                    frame: Bounds::new(point(px(0.0), px(950.0)), size(px(320.0), px(40.0))),
+                },
+                MountItem::Insert {
+                    parent: 1,
+                    child: 2,
+                    before: None,
+                },
+                MountItem::Insert {
+                    parent: 2,
+                    child: 4,
+                    before: None,
+                },
+                MountItem::Insert {
+                    parent: 2,
+                    child: 6,
+                    before: None,
+                },
+            ],
+        });
+        // A browser's model cannot answer native geometry itself.
+        assert!(answer(&model, &TestStep::Viewport).is_none());
+        assert!(
+            answer(
+                &model,
+                &TestStep::Bounds {
+                    selector: "view:4".into()
+                }
+            )
+            .is_none()
+        );
+        let remote_model = model.clone();
+        let remote = Arc::new(RemoteScene::new(move |step| {
+            answer(&remote_model, &step).unwrap()
+        }));
+        for scene in [model as Arc<dyn Scene>, remote as Arc<dyn Scene>] {
+            let landed = Arc::new(Mutex::new(Vec::new()));
+            let actions = Arc::new(Mutex::new(Vec::new()));
+            let agent = Agent::new(
+                scene,
+                Box::new(Page {
+                    offset: Mutex::new(100.0),
+                    target: 900.0,
+                    undone: Vec::new(),
+                    landed: landed.clone(),
+                    actions: actions.clone(),
+                }),
+            );
+            assert_eq!(
+                agent.take(TestStep::Bounds {
+                    selector: "view:4".into()
+                }),
+                StepOutcome::Done {
+                    value: serde_json::json!({"origin": {"x": 0.0, "y": 800.0}, "size": {"width": 320.0, "height": 40.0}}),
+                }
+            );
+            // A materialized match with no native geometry is also null.
+            for selector in ["view:6", "id:missing"] {
+                assert_eq!(
+                    agent.take(TestStep::Bounds {
+                        selector: selector.into()
+                    }),
+                    StepOutcome::Done {
+                        value: serde_json::Value::Null
+                    }
+                );
+            }
+            assert_eq!(
+                agent.take(TestStep::Viewport),
+                StepOutcome::Done {
+                    value: serde_json::json!({"width": 320.0, "height": 640.0}),
+                }
+            );
+            assert!(landed.lock().unwrap().is_empty());
+            assert!(actions.lock().unwrap().is_empty());
+        }
     }
 
     #[test]
@@ -2336,6 +2481,7 @@ mod tests {
                 target,
                 undone,
                 landed: landed.clone(),
+                actions: Default::default(),
             };
             let agent = Agent::new(model, Box::new(page));
             let (at, scrolled) = agent.bring_into_view(4, "id:far", None).unwrap();

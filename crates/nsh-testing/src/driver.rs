@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use nsh_core::{
     Dialog, ResolvedTextStyle,
-    geometry::{Point, Points, Size},
+    geometry::{Bounds, Point, Points, Size},
     platform::{ColorScheme, Lifecycle},
 };
 use nsh_dev::protocol::{ClockChange, TestStep};
@@ -108,6 +108,8 @@ pub(crate) trait Driver: Send {
     fn count(&mut self, selector: &str) -> Result<usize, String>;
     fn enabled(&mut self, selector: &str) -> Result<bool, String>;
     fn shows(&mut self, selector: &str) -> Result<bool, String>;
+    fn bounds(&mut self, selector: &str) -> Result<Option<Bounds<Points>>, String>;
+    fn viewport(&mut self) -> Result<Size<Points>, String>;
     fn value(&mut self, selector: &str) -> Result<Option<String>, String>;
     fn span_style(&mut self, selector: &str) -> Result<ResolvedTextStyle, String>;
     fn dialogs(&mut self) -> Result<Vec<Dialog>, String>;
@@ -274,6 +276,14 @@ impl Driver for Headless {
     fn shows(&mut self, selector: &str) -> Result<bool, String> {
         self.catch_up();
         self.screen().matches(selector)
+    }
+    fn bounds(&mut self, selector: &str) -> Result<Option<Bounds<Points>>, String> {
+        self.catch_up();
+        self.screen().bounds(selector)
+    }
+    fn viewport(&mut self) -> Result<Size<Points>, String> {
+        self.catch_up();
+        Ok(Headless::viewport(self))
     }
     fn value(&mut self, selector: &str) -> Result<Option<String>, String> {
         self.catch_up();
@@ -635,6 +645,14 @@ impl Driver for Remote {
         self.query(TestStep::Shows {
             selector: selector.into(),
         })
+    }
+    fn bounds(&mut self, selector: &str) -> Result<Option<Bounds<Points>>, String> {
+        self.query(TestStep::Bounds {
+            selector: selector.into(),
+        })
+    }
+    fn viewport(&mut self) -> Result<Size<Points>, String> {
+        self.query(TestStep::Viewport)
     }
     fn value(&mut self, selector: &str) -> Result<Option<String>, String> {
         self.query(TestStep::Value {

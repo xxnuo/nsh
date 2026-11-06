@@ -265,7 +265,17 @@ clipped away by `overflow: hidden`, a scroll view the user cannot scroll (`Scrol
 (`Screen::set_viewport`: the headless viewport; on a host the platform's, which `Agent::sync_viewport` tells the model
 before each step). A scroll view the user can scroll shows all of its content (scrolling brings it in), a modal shows
 over the window wherever it is in the tree, header items and input accessories wherever the platform puts them;
-`opacity` and transforms aside. The spans of a text that take presses (`AttributedText::links`: a nested
+`opacity` and transforms aside. `app.shows` and `waitFor` keep this matching meaning, not a viewport-intersection
+check. `app.bounds(selector)` reads the one matched materialized view's current `Bounds`
+(`{ origin: { x, y }, size: { width, height } }`) in points from the viewport's top left, without scrolling or
+input. No match (including an unmaterialized list row), or unavailable native geometry, returns `null`; several
+matches fail (use `nth=`). Disabled views can be queried. Nested text uses its containing text view's bounds.
+The real agent reads `Native::bounds`; headless `Screen::bounds` uses layout frames and ancestor scroll offsets,
+without transforms. Bounds are not clipped to scroll ancestors or the viewport and do not prove a view is
+unobscured by overlays or the keyboard. `app.viewport()` reads that app's current `Size` (`{ width, height }`)
+in points; it does not resize or dismiss the keyboard. Intersect bounds with the relevant scroll view and viewport
+for geometric visibility, and keep real input steps when testing whether a control can be used.
+The spans of a text that take presses (`AttributedText::links`: a nested
 `<Text onPress>`, a `TextView`'s links) are views of the model too (`Screen::set_spans`), inside their text view (or
 the span around them), found by their characters (`text:`, a bare string) and pressed as the platform presses them:
 the events go to the span's node; they are not texts of their own (`texts()` lists the text view's).

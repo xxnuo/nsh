@@ -359,6 +359,8 @@ expect(app.texts()).toContain("Saved at 09:00:10");
 | `await app.waitUntil(condition, options?)` | 应用每发生一次变化就重新检查，`condition()` 返回 true 时 resolve：用于选择器表达不了的条件（`() => app.storage().note === "Milk"`）。在手动时钟上，两次检查之间把时钟推进一个显示帧，最多推进 `timeout`。 |
 | `app.shows(selector)` | 当前是否有视图匹配。 |
 | `app.count(selector)` | 当前匹配的视图个数。 |
+| `app.bounds(selector)` | 匹配到的已物化视图当前的 `Bounds`：`{ origin: { x, y }, size: { width, height } }`，单位为点，原点在视口左上角。无匹配或原生几何不可用时返回 `null`；匹配不唯一时抛错（用 `nth=` 指定）。可查询禁用视图，嵌套文字使用所属文本容器的边界。不滚动、不触发输入。 |
+| `app.viewport()` | 当前 App 的 `Size`：`{ width, height }`，单位为点，不调整窗口、不触发输入。 |
 | `app.enabled(selector)` | 视图是否接受输入：它本身和外层视图都没有被禁用，输入框还要求不是 `readonly`。 |
 | `app.texts()` | 当前屏幕上的文字，按顺序排列。 |
 | `app.value(selector)` | 输入框的内容，没有匹配时为 `null`。 |
@@ -404,6 +406,11 @@ expect(app.texts()).toContain("Saved at 09:00:10");
 ```tsx
 await expect(app.press("Pay")).rejects.toMatchObject({ code: "ERR_NSH_TEST_DISABLED" });
 ```
+
+`shows()` 和 `waitFor()` 匹配可滚动到的已物化内容，包括当前视口外的行。要验证几何可见性，
+把 `bounds()` 与所在滚动视图的边界及 `viewport()` 求交。边界不裁剪，也不能证明没有被浮层或键盘遮挡；
+验证控件可操作仍需真实输入步骤。虚拟列表尚未物化的行没有边界。无界面边界来自布局和滚动偏移，
+不计算变换；真实平台读取原生视图的边界。
 
 `app.spanStyle("id:guide")` 读取嵌套的 `<Text testID="guide">`；`text:word` 读取匹配文字的第一个字符。
 用 `id:note >> text:word` 限定范围，用 `>> nth=0` 选择重复匹配中的一个。
