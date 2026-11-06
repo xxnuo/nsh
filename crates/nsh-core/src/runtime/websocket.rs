@@ -579,6 +579,26 @@ impl WebSocketConnection {
     }
 }
 
+impl WebSocketConnection {
+    /// Cancels transport I/O even when pending operations retain the connection.
+    pub(crate) fn abort(self) {
+        match self.inner {
+            #[cfg(not(target_arch = "wasm32"))]
+            Connection::Native(connection) => connection.abort(),
+            Connection::Host(host) => {
+                {
+                    let mut state = host.state.borrow_mut();
+                    state.messages.clear();
+                    state.bytes = 0;
+                }
+                HostState::fail(&host.state, closed("WebSocket connection is closed"));
+                host.task.borrow_mut().take();
+                host.state.borrow_mut().held.take();
+            }
+        }
+    }
+}
+
 /// A write of `len` bytes, past the one-message limit.
 fn too_long(len: usize) -> JsError {
     JsError::Range(format!(

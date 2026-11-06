@@ -219,7 +219,7 @@ impl Script {
                 Arc::new(system.access),
                 system.data_dir,
                 system.paths,
-                Default::default(),
+                system.quotas,
             )
             .with_websocket(system.websocket)
             .with_refuse_connections(system.refuse_connections)

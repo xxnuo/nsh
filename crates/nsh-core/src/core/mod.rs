@@ -1528,6 +1528,12 @@ impl<M: TextEngine> Core<M> {
         self.speech = backend;
     }
 
+    /// Supplies capability-scoped services to Rust components and tasks before mounting them.
+    /// Use the same access policy and quotas as the engine's JavaScript host.
+    pub fn set_system(&mut self, system: crate::element::System) {
+        self.components.runtime.set_system(system);
+    }
+
     /// Keeps the app's storage (`nsh/storage`) in `backend`; `None`: in
     /// memory, for the core's life.
     pub fn set_storage(&mut self, backend: Option<Arc<dyn crate::storage::StorageBackend>>) {

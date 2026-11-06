@@ -47,6 +47,8 @@ pub(crate) struct Ambient {
     measure: Option<MeasureFn>,
     /// The app's key-value storage (`nsh/storage`).
     storage: Option<crate::storage::Store>,
+    /// Capability-scoped services shared with this engine's JavaScript host.
+    system: Option<super::System>,
 }
 
 impl Ambient {
@@ -115,6 +117,12 @@ impl super::Runtime {
         with_data(|d| d.ambient.executor = Some(executor));
     }
 
+    /// The host-selected system services, before any app component runs.
+    pub(crate) fn set_system(&self, system: super::System) {
+        let _entered = self.enter();
+        with_data(|d| d.ambient.system = Some(system));
+    }
+
     /// Where the app's storage is kept.
     pub(crate) fn set_storage(&self, storage: crate::storage::Store) {
         let _entered = self.enter();
@@ -178,6 +186,15 @@ fn env<T: Clone + 'static>(part: impl FnOnce(&EnvSignals) -> Memo<T>) -> T {
     let memo = with_data(|d| d.ambient.env.as_ref().map(part));
     memo.expect("the core sets the environment before components run")
         .get()
+}
+
+pub(crate) fn current_system() -> Result<super::System, super::JsError> {
+    super::reactive::try_with_data(|d| d.ambient.system.clone())
+        .flatten()
+        .ok_or_else(|| {
+            super::JsError::Error("The host has no system services configured".into())
+                .with_code(super::codes::UNAVAILABLE)
+        })
 }
 
 fn executor() -> Rc<Executor> {

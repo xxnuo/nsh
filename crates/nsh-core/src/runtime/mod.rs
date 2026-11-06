@@ -29,7 +29,7 @@ mod process;
 mod speech;
 mod storage;
 mod updater;
-mod websocket;
+pub(crate) mod websocket;
 mod webview;
 
 pub use updater::{UpdaterHost, UpdaterSink};

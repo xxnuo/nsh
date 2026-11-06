@@ -859,7 +859,6 @@ fn trusted_directory(path: Option<std::path::PathBuf>) -> Option<std::path::Path
 }
 
 /// Native hosts choose these anchors before any application JavaScript runs.
-#[cfg(any(feature = "js-core", all(feature = "browser", target_arch = "wasm32")))]
 fn bundle_system_paths(bundle: &Bundle) -> nsh_core::access::TrustedPaths {
     let mut paths = bundle.system_paths.clone();
     paths.plugin_dir = trusted_directory(paths.plugin_dir);
@@ -1560,7 +1559,25 @@ impl<M: TextEngine + 'static> Driver<M> {
             // Native code is trusted: it reaches what the platform allows.
             App::Rust(_) => Policy::default().access(),
         });
+        let quotas = nsh_core::element::Quotas::default();
+        let system = nsh_core::element::System::new(
+            access.clone(),
+            config
+                .data_dir
+                .as_ref()
+                .map(|root| root.join(app_dir_name(config.app.app_id()))),
+            match &config.app {
+                App::Js(bundle) => bundle_system_paths(bundle),
+                App::Rust(_) => Default::default(),
+            },
+            quotas.clone(),
+        )
+        .with_websocket(config.websocket.clone())
+        .with_refuse_connections(config.refuse_connections.clone())
+        .with_filesystem(config.filesystem.clone())
+        .with_os(config.environment.os);
         let mut core = Core::new(text_engine.clone(), config.viewport);
+        core.set_system(system.clone());
         core.set_tree_order_tracking(sink.needs_tree_order());
         core.set_projected_state_mounting(sink.needs_projected_states());
         // The runtime's components (`nsh/mobile`'s `TabBar`) and the UI
@@ -1732,6 +1749,7 @@ impl<M: TextEngine + 'static> Driver<M> {
                 let system = {
                     script::SystemConfig {
                         access: (*access).clone(),
+                        quotas: quotas.clone(),
                         websocket: config.websocket.clone(),
                         refuse_connections: config.refuse_connections.clone(),
                         filesystem: config.filesystem.clone(),
@@ -1743,7 +1761,7 @@ impl<M: TextEngine + 'static> Driver<M> {
                             .data_dir
                             .as_ref()
                             .map(|root| root.join(app_dir_name(config.app.app_id()))),
-                        paths: bundle_system_paths(bundle),
+                        paths: system.paths.clone(),
                         wake: Arc::new(move || {
                             let _ = system_tx.send(Message::Wake);
                         }),
