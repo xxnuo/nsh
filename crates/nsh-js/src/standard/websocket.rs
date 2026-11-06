@@ -44,6 +44,7 @@ fn slot(cx: &Ctx<'_>) -> Result<nsh_core::element::Held> {
     use nsh_core::runtime::{MAX_WEBSOCKETS, WEBSOCKETS};
     crate::dom::shared(cx.as_raw().as_ptr())
         .system_quotas
+        .borrow()
         .take(WEBSOCKETS, MAX_WEBSOCKETS)
         .ok_or_else(|| {
             throw(
@@ -608,6 +609,7 @@ mod tests {
             assert!(
                 crate::dom::shared(raw)
                     .system_quotas
+                    .borrow()
                     .take(nsh_core::runtime::WEBSOCKETS, 1)
                     .is_some()
             )

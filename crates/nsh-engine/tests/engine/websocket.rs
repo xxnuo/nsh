@@ -416,3 +416,148 @@ fn a_connection_that_ends_without_a_close_handshake_rejects_reads() {
     assert_eq!(shown(&rx, "done"), "done last rejected 1006");
     server.join().unwrap();
 }
+
+#[derive(Clone, PartialEq, nsh_core::element::Props)]
+struct RustSocketProps {
+    url: nsh_core::element::Prop<nsh_core::element::SharedString>,
+}
+
+#[nsh_core::element::component]
+fn RustSocket(props: RustSocketProps) -> impl nsh_core::element::IntoElement {
+    use nsh_core::{
+        element::*,
+        websocket::{WebSocket, WebSocketData},
+    };
+    let status = signal("waiting".to_owned());
+    let url = props.url.get().to_string();
+    spawn(async move {
+        let result = async {
+            let socket = WebSocket::connect(url).await?;
+            for message in [
+                WebSocketData::Text("rust".into()),
+                WebSocketData::Bytes(vec![3, 7]),
+            ] {
+                socket.write(message.clone()).await?;
+                assert_eq!(socket.read().await?, Some(message));
+            }
+            socket.close(Some(4001), Some("bye".into())).await?;
+            assert_eq!(socket.close_code(), Some(4001));
+            assert_eq!(socket.close_reason().as_deref(), Some("bye"));
+            assert_eq!(socket.read().await?, None);
+            Ok::<_, JsError>(())
+        }
+        .await;
+        status.set(match result {
+            Ok(()) => "done rust round trip".into(),
+            Err(error) => format!("done {}", error.code().unwrap_or(error.message())),
+        });
+    });
+    text(move || status.get())
+}
+
+#[test]
+fn a_rust_root_uses_the_engine_websocket_runtime() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let (tcp, _) = listener.accept().unwrap();
+        tcp.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let mut socket = tungstenite::accept(tcp).unwrap();
+        for _ in 0..2 {
+            let message = socket.read().unwrap();
+            socket.send(message).unwrap();
+        }
+        assert!(matches!(
+            socket.read().unwrap(),
+            tungstenite::Message::Close(Some(_))
+        ));
+        let _ = socket.flush();
+    });
+    let root = nsh_core::element::Root::new::<RustSocket>(move || RustSocketProps {
+        url: format!("ws://{address}/").into(),
+    });
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let _engine = Engine::start(
+        EngineConfig::new(root),
+        || ApproxTextEngine,
+        ChannelSink(tx),
+    )
+    .unwrap();
+    assert_eq!(shown(&rx, "done"), "done rust round trip");
+    server.join().unwrap();
+}
+
+#[test]
+fn a_rust_root_obeys_the_hosts_connection_refusal() {
+    let root = nsh_core::element::Root::new::<RustSocket>(|| RustSocketProps {
+        url: "ws://127.0.0.1:1/".into(),
+    });
+    let mut config = EngineConfig::new(root);
+    config.refuse_connections = Some(std::sync::Arc::new(|_| {
+        nsh_core::element::JsError::Error("no live network in this test".into())
+            .with_code("ERR_TEST_REFUSED")
+    }));
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let _engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
+    assert_eq!(shown(&rx, "done"), "done ERR_TEST_REFUSED");
+}
+
+thread_local! {
+    static HELD_QUOTA: std::cell::RefCell<Option<nsh_core::element::Held>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Reserves the JS host's full connection quota without opening network sockets.
+#[nsh_core::element::module]
+struct QuotaHold;
+
+#[nsh_core::element::module]
+impl QuotaHold {
+    /// Holds the quota until the JS VM's owner is disposed.
+    pub(crate) fn reserve(sys: nsh_core::element::System, cx: nsh_core::element::CallCx<'_>) {
+        HELD_QUOTA.with(|held| {
+            *held.borrow_mut() = Some(
+                sys.quotas
+                    .reserve(
+                        nsh_core::runtime::WEBSOCKETS,
+                        nsh_core::runtime::MAX_WEBSOCKETS,
+                        nsh_core::runtime::MAX_WEBSOCKETS,
+                    )
+                    .unwrap(),
+            );
+        });
+        cx.on_cleanup(|| {
+            HELD_QUOTA.with(|held| held.borrow_mut().take());
+        });
+    }
+}
+
+fn rust_socket_registry() -> nsh_core::element::Registry {
+    let mut set = nsh_core::element::Registry::ui_set("test/rust-socket");
+    set.register::<RustSocket>().module::<QuotaHold>();
+    set
+}
+
+#[test]
+fn rust_components_and_javascript_share_one_connection_quota() {
+    let (_engine, rx) = crate::rust_classes::start_with(
+        r#"import { mount } from "nsh";
+import { RustSocket, QuotaHold } from "test/rust-socket";
+QuotaHold.reserve();
+mount(() => <RustSocket url="ws://127.0.0.1:1/" />);"#,
+        vec![rust_socket_registry()],
+        Some(LOOPBACK),
+    );
+    assert_eq!(shown(&rx, "done"), "done ERR_NSH_QUOTA_EXCEEDED");
+}
+
+#[test]
+fn rust_components_in_a_js_app_obey_its_capabilities() {
+    let (_engine, rx) = crate::rust_classes::start_with(
+        r#"import { mount } from "nsh";
+import { RustSocket } from "test/rust-socket";
+mount(() => <RustSocket url="ws://127.0.0.1:1/" />);"#,
+        vec![rust_socket_registry()],
+        Some("{}"),
+    );
+    assert_eq!(shown(&rx, "done"), "done ERR_ACCESS_DENIED");
+}

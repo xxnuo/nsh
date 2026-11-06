@@ -63,7 +63,7 @@ pub(crate) struct Shared {
     pub(crate) system_paths: RefCell<nsh_core::access::TrustedPaths>,
     /// The VM's counts of limited resources for Rust modules (`net`'s
     /// sockets), handed to their calls' `System`.
-    pub(crate) system_quotas: nsh_core::element::Quotas,
+    pub(crate) system_quotas: RefCell<nsh_core::element::Quotas>,
     /// The VM's scheduler, for native transports that start its I/O runtime.
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) scheduler: std::rc::Weak<Scheduler>,
@@ -692,6 +692,12 @@ impl Host {
     ) {
         *self.shared.system_access.borrow_mut() = access;
         *self.shared.system_data_dir.borrow_mut() = data_dir;
+    }
+
+    /// Shares resource quotas with Rust components on this engine.
+    /// Set before evaluating app code, while no resources are held.
+    pub fn set_system_quotas(&self, quotas: nsh_core::element::Quotas) {
+        *self.shared.system_quotas.borrow_mut() = quotas;
     }
 
     /// Sets trusted application and home directory anchors for manifest grants.

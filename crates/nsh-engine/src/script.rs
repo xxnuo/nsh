@@ -7,6 +7,7 @@
 #[cfg(any(feature = "js-core", all(feature = "browser", target_arch = "wasm32")))]
 pub(crate) struct SystemConfig {
     pub(crate) access: nsh_core::access::Access,
+    pub(crate) quotas: nsh_core::element::Quotas,
     pub(crate) websocket: Option<std::sync::Arc<dyn nsh_core::websocket::WebSocketTransport>>,
     pub(crate) refuse_connections: Option<nsh_core::element::RefuseConnections>,
     pub(crate) filesystem: Option<std::sync::Arc<dyn nsh_core::filesystem::FileSystem>>,
@@ -106,6 +107,7 @@ mod imp {
                 }
             };
             host.set_system_access(system.access, system.data_dir);
+            host.set_system_quotas(system.quotas);
             host.set_system_paths(system.paths);
             host.set_websocket_transport(system.websocket);
             host.set_refuse_connections(system.refuse_connections);

@@ -195,6 +195,14 @@ impl WebSocketConnection {
         ))
     }
 
+    /// Ends the driver immediately; dropping its command receiver wakes pending operations.
+    pub(super) fn abort(self) {
+        if self.status.borrow().is_none() {
+            *self.status.borrow_mut() = Some(CloseStatus::abnormal());
+        }
+        self._driver.cancel();
+    }
+
     /// How the connection closed, once it did.
     pub(super) fn status(&self) -> Option<CloseStatus> {
         self.status.borrow().clone()

@@ -405,6 +405,16 @@ impl<T: Ret + 'static> Later<T> {
         }))
     }
 
+    /// Awaits a system operation from Rust without converting its value to JS.
+    pub(crate) async fn resolve(self) -> Result<T, JsError> {
+        self.0.await.map_err(|error| match error {
+            Thrown::Type(message) => JsError::Type(message),
+            Thrown::Range(message) => JsError::Range(message),
+            Thrown::Error(message) => JsError::Error(message),
+            Thrown::Fields(fields) => JsError::Fields(fields),
+        })
+    }
+
     pub(crate) fn into_future(self) -> ModuleFuture {
         Box::pin(async move {
             let result: JsResult = match self.0.await {

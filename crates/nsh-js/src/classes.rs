@@ -1197,7 +1197,7 @@ impl JsHost for CallHost<'_> {
             std::sync::Arc::new(shared.system_access.borrow().clone()),
             shared.system_data_dir.borrow().clone(),
             shared.system_paths.borrow().clone(),
-            shared.system_quotas.clone(),
+            shared.system_quotas.borrow().clone(),
         )
         .with_locals(shared.system_locals.clone())
         .with_exit(shared.system_exit_handler.borrow().clone())
