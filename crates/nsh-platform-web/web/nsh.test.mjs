@@ -98,7 +98,7 @@ test("input autofill hints are set, changed and cleared on both field kinds", ()
     setAttribute: (name, value) => attrs.set(name, value),
     removeAttribute: (name) => attrs.delete(name),
   };
-  const el = { _field: field };
+  const el = { _field: field, removeAttribute() {} };
   player.view = () => el;
   for (const multiline of [false, true]) {
     field.tagName = multiline ? "TEXTAREA" : "INPUT";

@@ -2231,7 +2231,7 @@ class Player {
     // Its `--nsh-selection`.
     swapClass(el, "_selection", this.styleClass(selection));
     el._textLabel = runs.map((r) => r[2]).join("");
-    if (el._props?.label == null) el.setAttribute("aria-label", el._textLabel);
+    if (el._props?.label == null) (el._field ?? el).setAttribute("aria-label", el._textLabel);
   }
 
   /**
@@ -2408,8 +2408,18 @@ class Player {
   /** ARIA attributes from the accessibility props (`op_vp`). */
   updateAria(el) {
     const p = el._props ?? {};
-    const set = (name, value) => (value == null || value === false ? el.removeAttribute(name) : el.setAttribute(name, String(value)));
-    const role = ARIA_ROLES[p.role] ?? (p.role && p.role !== "none" ? p.role : el._pressable ? "button" : null);
+    const target = el._field ?? el;
+    const set = (name, value, node = target) => {
+      if (node !== el) el.removeAttribute(name);
+      if (value == null || value === false) node.removeAttribute(name);
+      else node.setAttribute(name, String(value));
+    };
+    if (el._field) {
+      // The editable control owns its semantics and Tab stop, not its layout wrapper.
+      el.removeAttribute("tabindex");
+      el._field.disabled = !!p.disabled;
+    }
+    const role = ARIA_ROLES[p.role] ?? (p.role && p.role !== "none" ? p.role : !el._field && el._pressable ? "button" : null);
     set("role", role);
     set("aria-label", p.label ?? el._textLabel);
     set("aria-description", p.hint);
@@ -2427,8 +2437,8 @@ class Player {
     set("aria-valuemax", max);
     set("aria-valuenow", now);
     set("aria-valuetext", text);
-    set("aria-live", p.live);
-    set("aria-hidden", p.hidden && "true");
+    set("aria-live", p.live, el);
+    set("aria-hidden", p.hidden && "true", el);
   }
 
   /** The stops of the keyboard focus (Tab), as `ViewProps::focus_stop`
@@ -2438,7 +2448,7 @@ class Player {
    * assistive technologies. */
   updateFocusable(el) {
     const p = el._props;
-    const focusable = (p?.focusable ?? !!el._pressable) && !p?.disabled && !p?.hidden;
+    const focusable = !el._field && (p?.focusable ?? !!el._pressable) && !p?.disabled && !p?.hidden;
     if (focusable) el.tabIndex = 0;
     // Programmatic focus only for what screen-reader focus moved to.
     else if (el._a11yFocus) el.tabIndex = -1;
@@ -4534,6 +4544,7 @@ class Player {
     // A built-in bar of the app's takes the textarea's indicator's place.
     field.classList.toggle("nsh-noindicator", !!config.noIndicator);
     this.inputScrolled(el, field);
+    this.updateAria(el);
     if (config.autoFocus && !el._autoFocused) {
       el._autoFocused = true;
       setTimeout(() => field.focus(), 0);
@@ -5623,6 +5634,7 @@ class Player {
         break;
       case "a11yFocus":
         if (!el) break;
+        if (el._field) { el._field.focus(); break; }
         if (!el.hasAttribute("tabindex")) {
           el.tabIndex = -1;
           el._a11yFocus = true;

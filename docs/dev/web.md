@@ -570,6 +570,11 @@ the root; `<Image>` elements are `<img>` elements, loaded by the browser.
 
 ## Input
 
+Accessibility names, hints, roles and states belong to the actual `<input>` or `<textarea>`, including after label
+updates or switching field kinds. The layout wrapper has no duplicate name, role or Tab stop; subtree hiding and
+live regions remain on the wrapper. A disabled field uses HTML `disabled`; `editable: false` uses `readonly`, so
+read-only text stays focusable for selection and copy.
+
 `autoComplete` reaches both `<input>` and `<textarea>` as HTML's `autocomplete` attribute.
 `src/encode/input.rs` maps every `AutoFill` variant to its HTML token (`Password` to
 `current-password`, `Birthdate` to `bday`, `Off` to `off`). `Default` leaves the attribute unset;
