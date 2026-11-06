@@ -530,7 +530,9 @@ impl WebSocketConnection {
                         "WebSocket close",
                         poll_fn(|cx| {
                             let mut state = state.borrow_mut();
-                            if state.status.is_some() {
+                            if let Some(error) = &state.error {
+                                Poll::Ready(Err(error.clone()))
+                            } else if state.status.is_some() {
                                 Poll::Ready(Ok(()))
                             } else {
                                 if !state
@@ -1048,6 +1050,38 @@ mod tests {
         assert_eq!(error.as_deref(), Some("ERR_SOCKET_CLOSED"));
         assert_eq!(connection.close_code(), Some(ABNORMAL));
         assert_eq!(connection.close_reason().as_deref(), Some(""));
+    }
+
+    #[tokio::test]
+    async fn host_close_rejects_a_transport_failure_before_or_during_the_handshake() {
+        for event in [
+            WebSocketEvent::Error("network disconnected".into()),
+            WebSocketEvent::Close {
+                code: ABNORMAL,
+                reason: String::new(),
+                was_clean: false,
+            },
+        ] {
+            let connection = host(0);
+            let mut closing = std::pin::pin!(connection.close(None, None).unwrap().resolve());
+            assert!(poll(closing.as_mut()).is_pending());
+            let Connection::Host(ref host) = connection.inner else {
+                unreachable!()
+            };
+            HostState::event(&host.state, event);
+            let Poll::Ready(Err(error)) = poll(closing.as_mut()) else {
+                panic!("a failed transport cannot complete a close handshake")
+            };
+            assert_eq!(error.code(), Some("ERR_SOCKET_CLOSED"));
+            assert_eq!(
+                settled(connection.close(None, None).unwrap())
+                    .await
+                    .unwrap_err()
+                    .as_deref(),
+                Some("ERR_SOCKET_CLOSED")
+            );
+            assert_eq!(connection.close_code(), Some(ABNORMAL));
+        }
     }
 
     #[tokio::test]
