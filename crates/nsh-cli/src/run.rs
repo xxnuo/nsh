@@ -789,7 +789,8 @@ pub(crate) fn install_android_host(
     // device replaces what this app installed. The device's install time
     // tells whether the host there is still the one this app installed.
     let installed = work.join("android/installed");
-    let version = runtime_version(runtime)?;
+    let abi = android::device_abi(sdk, serial)?;
+    let version = format!("{abi} {}", runtime_version(runtime)?);
     let built =
         apk_path.exists() && fs::read_to_string(&stamp).ok().as_deref() == Some(version.as_str());
     if !built {
@@ -807,7 +808,7 @@ pub(crate) fn install_android_host(
                 rust: false,
                 dark: false,
                 runtime,
-                abis: &[],
+                abis: std::slice::from_ref(&abi),
                 icon: None,
                 assets: Vec::new(),
                 signing: Signing::Debug,
