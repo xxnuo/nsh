@@ -601,6 +601,49 @@ signals, inside the graph like any other Rust code of the view; the patches that
 current when it was made and ends with it (or at `.cancel()`), and is polled under it, so what it makes is that
 owner's; awaiting a `Spawned` gives its output.
 
+### WebSockets from Rust
+
+`nsh_core::websocket::WebSocket` uses the engine's native or browser transport, with the same URL validation,
+network permissions, host refusal callback and 32-connection quota as both JavaScript WebSocket APIs. A Rust
+component in a JS app inherits that app's declared capabilities and the host's grants. Rust roots retain the
+engine's existing trusted-native policy; this API does not add manifest sandboxing to Rust roots. The host
+supplies the scoped services before mounting, through `Core::set_system`; an absent service fails with
+`ERR_FEATURE_UNAVAILABLE_ON_PLATFORM`.
+
+Call `connect(url).await`, `write(WebSocketData::Text(..) | WebSocketData::Bytes(..)).await`, `read().await` and
+`close(code, reason).await` from an engine-local `spawn` task. The connection and its pending operations end when
+its creating owner is disposed or the connection is dropped. `Owner::detached()` means no owner; use
+`create_root` when manually controlling a lifetime. After a peer closes cleanly, queued reads drain before
+`read` returns `None`; calling `close` discards unread messages. Failures return `JsError`, whose `code()`
+distinguishes denied permissions, quotas, timeouts and closed sockets. `close_code()` and `close_reason()` expose the peer's close frame. Code 1000 is the default;
+application close codes are 3000–4999 and reasons are at most 123 UTF-8 bytes. The default connection is closed.
+
+Messages and queued writes are limited to 8 MiB; unread queues apply back pressure at eight messages or 8 MiB.
+See [sandbox.md](sandbox.md) and `runtime/websocket.rs` for the shared checks and limits.
+
+```rust,ignore
+use nsh_core::{
+    element::{JsError, spawn},
+    websocket::{WebSocket, WebSocketData},
+};
+
+async fn exchange(url: String) -> Result<(), JsError> {
+    let socket = WebSocket::connect(url).await?;
+    socket.write(WebSocketData::Text("hello".into())).await?;
+    if let Some(message) = socket.read().await? {
+        log::info!("received {} bytes", message.len());
+    }
+    socket.close(None, None).await
+}
+
+// Inside a component or its event handler; this task follows that owner's lifetime.
+spawn(async move {
+    if let Err(error) = exchange("wss://example.com/ws".into()).await {
+        log::warn!("WebSocket failed: {}", error.message());
+    }
+});
+```
+
 ## Environment
 
 The engine hands the core what views may read (`element::Environment`: window, safe area, keyboard height, appearance,

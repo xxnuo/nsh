@@ -232,7 +232,7 @@ mod tests {
     use super::*;
     use crate::{
         access::{Access, Capabilities},
-        element::{Owner, Runtime, System, codes},
+        element::{Owner, Runtime, System, codes, create_root},
         runtime::{MAX_WEBSOCKETS, WEBSOCKETS},
     };
 
@@ -302,6 +302,10 @@ mod tests {
         future.poll(&mut Context::from_waker(Waker::noop()))
     }
     fn connect(owner: &Owner) -> WebSocket {
+        assert!(
+            owner.is_live(),
+            "connections need a real disposable test owner"
+        );
         owner.run(|| {
             let mut opening = std::pin::pin!(WebSocket::connect("ws://example.com"));
             assert!(poll(opening.as_mut()).is_pending());
@@ -351,7 +355,7 @@ mod tests {
             .reserve(WEBSOCKETS, MAX_WEBSOCKETS - 1, MAX_WEBSOCKETS)
             .unwrap();
         runtime.set_system(system.clone());
-        let owner = Owner::detached();
+        let (owner, ()) = create_root(|| ());
         let socket = connect(&owner);
         assert_eq!(system.quotas.held(WEBSOCKETS), MAX_WEBSOCKETS);
         let error =
@@ -374,7 +378,7 @@ mod tests {
         let _entered = runtime.enter();
         let transport = Arc::new(Transport::default());
         runtime.set_system(services(transport));
-        let owner = Owner::detached();
+        let (owner, ()) = create_root(|| ());
         let socket = connect(&owner);
         socket
             .write(WebSocketData::Text("hello".into()))
@@ -423,7 +427,7 @@ mod tests {
         let transport = Arc::new(Transport::default());
         let system = services(transport.clone());
         runtime.set_system(system.clone());
-        let owner = Owner::detached();
+        let (owner, ()) = create_root(|| ());
         let socket = connect(&owner);
         let mut read = std::pin::pin!(socket.read());
         assert!(poll(read.as_mut()).is_pending());
@@ -442,7 +446,10 @@ mod tests {
         assert!(matches!(poll(read.as_mut()), Poll::Ready(Err(_))));
         // A pending browser write checks for errors after its bounded drain interval.
         assert_eq!(write.await.unwrap_err().code(), Some("ERR_SOCKET_CLOSED"));
-        assert!(matches!(poll(close.as_mut()), Poll::Ready(Ok(()))));
+        let Poll::Ready(Err(error)) = poll(close.as_mut()) else {
+            panic!("owner cancellation must fail the close handshake")
+        };
+        assert_eq!(error.code(), Some("ERR_SOCKET_CLOSED"));
         assert_eq!(
             socket
                 .write(WebSocketData::Bytes(vec![]))
@@ -462,7 +469,7 @@ mod tests {
         let transport = Arc::new(Transport::default());
         let system = services(transport.clone());
         runtime.set_system(system.clone());
-        let owner = Owner::detached();
+        let (owner, ()) = create_root(|| ());
         owner.run(|| {
             crate::element::spawn(WebSocket::connect("ws://example.com"));
         });
@@ -486,7 +493,7 @@ mod tests {
         let _entered = runtime.enter();
         let transport = Arc::new(Transport::default());
         runtime.set_system(services(transport));
-        let owner = Owner::detached();
+        let (owner, ()) = create_root(|| ());
         let socket = connect(&owner);
         for (code, reason) in [(Some(1001), None), (Some(1000), Some("é".repeat(62)))] {
             assert_eq!(
