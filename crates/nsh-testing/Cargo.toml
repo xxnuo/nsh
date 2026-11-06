@@ -55,6 +55,8 @@ ureq = { workspace = true, optional = true }
 nsh-dev = { workspace = true, optional = true, features = ["client"] }
 
 [dev-dependencies]
+# Declaration contracts read the specs' TypeScript text.
+nsh-core = { workspace = true, features = ["declarations"] }
 # The fetch tests drive a VM's network by hand (`headless/net_fetch_tests.rs`).
 nsh-js = { workspace = true, features = ["zlib", "crypto"] }
 nsh-base = { workspace = true, features = ["editor", "highlight", "plot", "rich-editor"] }
