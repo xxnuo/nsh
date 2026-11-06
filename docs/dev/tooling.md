@@ -288,7 +288,11 @@ queries report an error, including bare selectors whose test id matches an empty
 are mapped to what the step acts on (`Screen::pick`: the pressable ancestor, the input inside, the scroll view around)
 and more than one fails the step; a press whose match, or a view between it and its pressable ancestor, is disabled
 (the accessibility state) fails too. When the app moves the focus (`focus()`, `blur()`), the input it left gets
-`Blur` and the one it went to `Focus`, as on a platform. Each step sends what a platform would, to the views that
+`Blur` and the one it went to `Focus`, as on a platform. A headless keyboard-focus transfer uses
+`EngineControl::transfer_focus`: the complete interaction states and `Blur` / `Focus` events travel in one
+channel message, in that order, without a commit between its ends. This keeps shared ancestors' `focus-within`
+continuous even if the engine wakes while the driver is reporting the transfer. Input steps and programmatic
+`focus()` / `blur()` use the same path. Each step sends what a platform would, to the views that
 report it:
 
 - `press`: the match or its nearest pressable ancestor gets `PressIn`, `PressOut`, `Press`, at the match's center

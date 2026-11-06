@@ -1704,6 +1704,13 @@ impl Screen {
         Some(next)
     }
 
+    /// Updates the focus bit and reads all states, even when it was unchanged.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn set_focused_state(&mut self, id: NodeId, on: bool) -> Option<u16> {
+        self.set_state(id, nsh_core::tailwind::state::FOCUSED, on);
+        self.nodes.get(&id).map(|view| view.states)
+    }
+
     /// The context menu the app shows (`Menu.popup`), if one is open.
     pub(crate) fn menu(&self) -> Option<&[nsh_core::desktop::MenuItem]> {
         self.menu.as_deref()

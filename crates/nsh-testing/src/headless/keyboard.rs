@@ -9,12 +9,13 @@
 //! does (macOS, the web), Return and Space press the pressable it is on,
 //! Shift+F10 asks it for its context menu (the web, Linux), the
 //! focused input takes the keys that edit it, and Escape goes back.
+//! Each focus transfer reports both ends to the engine in one message, so
+//! a commit cannot make their common ancestors briefly lose `focus-within`.
 
 use nsh_core::{
     Command, EventKind, EventPayload, MountBatch, MountItem, NodeId, PayloadValue, ROOT_ID,
     keymap::{Key, KeyMatch, Keystroke},
     platform::Os,
-    tailwind::state::FOCUSED,
 };
 
 use super::Headless;
@@ -178,21 +179,16 @@ impl Headless {
         if from == to {
             return;
         }
-        if let Some(old) = from {
-            self.screen.set_focused(None);
-            self.screen.set_key_focus(None);
-            self.set_focused_state(old, false);
-            self.send(old, EventKind::Blur, EventPayload::None);
-        }
+        self.screen.set_focused(None);
+        self.screen.set_key_focus(None);
         if let Some(new) = to {
             if self.screen.input(new).is_some() {
                 self.screen.set_focused(Some(new));
             } else {
                 self.screen.set_key_focus(Some(new));
             }
-            self.set_focused_state(new, true);
-            self.send(new, EventKind::Focus, EventPayload::None);
         }
+        self.report_focus(from, to);
     }
 
     /// The app moved the focus (`focus()`, `blur()`) in `batch`, applied
@@ -203,20 +199,11 @@ impl Headless {
     pub(super) fn focus_calls(&mut self, batch: &MountBatch, focused: Option<NodeId>) {
         let now = self.screen.focused();
         if now != focused {
-            if let Some(old) = focused {
-                self.set_focused_state(old, false);
-                self.send(old, EventKind::Blur, EventPayload::None);
+            let from = focused.or(self.screen.key_focus());
+            if now.is_some() {
+                self.screen.set_key_focus(None);
             }
-            if let Some(new) = now {
-                // The pressable that had the keyboard focus loses it.
-                if let Some(key) = self.screen.key_focus() {
-                    self.screen.set_key_focus(None);
-                    self.set_focused_state(key, false);
-                    self.send(key, EventKind::Blur, EventPayload::None);
-                }
-                self.set_focused_state(new, true);
-                self.send(new, EventKind::Focus, EventPayload::None);
-            }
+            self.report_focus(from, now);
         }
         if !self.tabs_to_views() {
             return;
@@ -249,14 +236,11 @@ impl Headless {
         }
     }
 
-    /// A view's or an input's `focus:` state, which follows the keyboard
-    /// focus: reported whatever the view tracks, as the platforms report
-    /// it (`nsh_core::input::reported_states`; the core works out
-    /// `focus-within` from it).
-    pub(super) fn set_focused_state(&mut self, id: NodeId, on: bool) {
-        if let Some(states) = self.screen.set_state(id, FOCUSED, on) {
-            self.engine.control().set_states(id, states);
-        }
+    /// One channel message keeps a shared ancestor focused across both ends.
+    fn report_focus(&mut self, from: Option<NodeId>, to: Option<NodeId>) {
+        let from = from.and_then(|id| self.screen.set_focused_state(id, false).map(|states| (id, states)));
+        let to = to.and_then(|id| self.screen.set_focused_state(id, true).map(|states| (id, states)));
+        self.engine.control().transfer_focus(from, to);
     }
 
     /// Backspace in input `id`: its last character goes.

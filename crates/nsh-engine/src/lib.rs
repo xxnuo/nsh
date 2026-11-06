@@ -16,6 +16,8 @@ mod access;
 mod app_directory;
 mod cache;
 mod error;
+#[cfg(test)]
+mod focus_tests;
 mod host_channel;
 mod local_storage;
 #[cfg(feature = "net")]
@@ -985,6 +987,10 @@ const MAX_FLUSH_ROUNDS: usize = 64;
 
 enum Message {
     Event(NodeId, EventKind, EventPayload),
+    FocusTransfer {
+        from: Option<(NodeId, u16)>,
+        to: Option<(NodeId, u16)>,
+    },
     Scroll(NodeId, Point<Points>, u32),
     Kept(Vec<NodeId>),
     InputScroll(NodeId, Point<Points>, Size<Points>, Size<Points>),
@@ -1075,6 +1081,19 @@ impl EngineControl {
     /// Delivers an input event (and its data) to a node.
     pub fn dispatch_event(&self, id: NodeId, event: EventKind, payload: EventPayload) {
         let _ = self.tx.send(Message::Event(id, event, payload));
+    }
+
+    /// Reports one keyboard-focus transfer without a commit between its ends.
+    /// Each endpoint carries its node and complete reported interaction states:
+    /// only `FOCUSED` is cleared on `from` and set on `to`; all other bits stay.
+    /// The old node receives `Blur` before the new node receives `Focus`, each
+    /// after its states change. `None` means focus enters or leaves the surface.
+    /// Shared ancestors keep `focus-within` through the transfer, even when the
+    /// engine receives it while the platform is still handling the input.
+    pub fn transfer_focus(&self, from: Option<(NodeId, u16)>, to: Option<(NodeId, u16)>) {
+        if from.is_some() || to.is_some() {
+            let _ = self.tx.send(Message::FocusTransfer { from, to });
+        }
     }
 
     /// Reports the content offset of a scroll view or list, and how many
@@ -2985,6 +3004,17 @@ fn class_environment(env: &Environment) -> nsh_core::tailwind::ClassEnvironment 
 /// Returns false on shutdown.
 fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message: Message) -> bool {
     match message {
+        Message::FocusTransfer { from, to } => {
+            use nsh_core::tailwind::state::FOCUSED;
+            // One message: a receiver cannot commit while the sender is between
+            // the blur and focus reports of the same transfer.
+            for (end, event, focused) in [(from, EventKind::Blur, false), (to, EventKind::Focus, true)] {
+                if let Some((id, states)) = end {
+                    state.core.set_states(id, if focused { states | FOCUSED } else { states & !FOCUSED });
+                    handle(script, state, Message::Event(id, event, EventPayload::None));
+                }
+            }
+        }
         Message::Event(id, event, mut payload) => {
             state.events_handled += 1;
             if state.trace {
