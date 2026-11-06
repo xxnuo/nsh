@@ -556,6 +556,14 @@ pub enum TestStep {
         /// The selector.
         selector: String,
     },
+    /// The matched view's current bounds in viewport points, or null.
+    /// Does not scroll; several matches fail. Nested text uses its text container.
+    Bounds {
+        /// The selector.
+        selector: String,
+    },
+    /// The current viewport size in points (`app.viewport`).
+    Viewport,
     /// Whether the view takes input: a boolean.
     Enabled {
         /// The selector.
@@ -986,6 +994,22 @@ impl From<log::Level> for LogLevel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn geometry_queries_round_trip_without_action_fields() {
+        for (step, wire) in [
+            (
+                TestStep::Bounds {
+                    selector: "id:row".into(),
+                },
+                r#"{"step":"bounds","selector":"id:row"}"#,
+            ),
+            (TestStep::Viewport, r#"{"step":"viewport"}"#),
+        ] {
+            assert_eq!(serde_json::to_string(&step).unwrap(), wire);
+            assert_eq!(serde_json::from_str::<TestStep>(wire).unwrap(), step);
+        }
+    }
 
     #[test]
     fn wire_format_is_stable() {

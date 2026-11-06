@@ -386,6 +386,8 @@ one: a selector matching several fails the step, and the error says how to narro
 | `await app.waitUntil(condition, options?)` | Resolves once `condition()` returns true, looking again after each change of the app: for what no selector says (`() => app.storage().note === "Milk"`). On a manual clock, moves it a display frame between two looks, by `timeout` at most. |
 | `app.shows(selector)` | Whether a view matches now. |
 | `app.count(selector)` | How many views match now. |
+| `app.bounds(selector)` | The matched materialized view's current `Bounds`: `{ origin: { x, y }, size: { width, height } }`, in points from the viewport's top left. `null` for no match or unavailable native geometry; several matches throw (use `nth=`). Disabled views can be queried. Nested text uses its text container. Does not scroll or take input. |
+| `app.viewport()` | This app's current `Size`: `{ width, height }` in points, without resizing or taking input. |
 | `app.enabled(selector)` | Whether the view takes input: neither it nor a view around it is disabled, and an input is not `readonly`. |
 | `app.texts()` | The texts on screen now, in order. |
 | `app.value(selector)` | The text of an input, `null` when none matches. |
@@ -408,6 +410,12 @@ one: a selector matching several fails the step, and the error says how to narro
 | `await app.setColorScheme(scheme)` | Switches the system's appearance to `"light"` or `"dark"`, as the user does. |
 | `await app.setLifecycle(state)` | Moves the app to `"background"`, `"inactive"` or `"active"`, as the system does when the user leaves it, switches to another app or window and comes back (`lifecycle()`). Headless runs only. |
 | `await app.screenshot(path?)` | A picture of the app as a `Uint8Array`: PNG of its window on graphical targets, UTF-8 Cell JSON on `tui`, also saved at `path` on this machine when given (relative to the current directory). Only a real platform draws the app: see [On a real platform](#on-a-real-platform). |
+
+`shows()` and `waitFor()` match materialized content that can be scrolled into view, including rows outside the
+current viewport. For geometric visibility, intersect `bounds()` with the relevant scroll view's bounds and
+`viewport()`. Bounds are not clipped and do not prove that an overlay or the keyboard leaves the view unobscured;
+keep real input steps to check that a control can be used. An unmaterialized virtual-list row has no bounds yet.
+Headless bounds use layout frames and scroll offsets, without transforms; real targets use native view bounds.
 
 A step resolves once the app rendered nothing for 100 ms and no native animation runs that ends by itself (2 s at
 most, for apps that render all the time; on a manual clock, also 2 s of the app's time), so what it changed is on

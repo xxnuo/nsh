@@ -130,6 +130,31 @@ fn headless_runs_play_the_platform_s_part() {
 }
 
 #[test]
+fn geometry_queries_generate_the_existing_bounds_and_size_types() {
+    let files = nsh_js::type_definitions(&[nsh_testing::registry().into()]);
+    let (_, declaration) = files
+        .iter()
+        .find(|(path, _)| path == "nsh/test.d.ts")
+        .unwrap();
+    assert!(
+        declaration.contains("bounds(selector: string): Bounds | null"),
+        "{declaration}"
+    );
+    assert!(declaration.contains("viewport(): Size"), "{declaration}");
+    assert!(!declaration.contains("interface Bounds"));
+    assert!(!declaration.contains("interface Size"));
+}
+
+#[test]
+fn geometry_queries_are_read_only_and_scoped_to_each_app() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/testing/queries");
+    let results = run_file(&test_run(None), &dir.join("Geometry.test.tsx"), &mut |_| {}).unwrap();
+    let failed: Vec<_> = results.iter().filter(|r| r.failure.is_some()).collect();
+    assert!(failed.is_empty(), "{failed:#?}");
+    assert_eq!(results.len(), 2);
+}
+
+#[test]
 fn selectors_find_one_view_and_steps_act_on_it() {
     let run = TestRun {
         ui_sets: vec![nsh_base::registry()],

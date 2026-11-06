@@ -1635,6 +1635,21 @@ impl Screen {
         })
     }
 
+    /// The matched view's bounds in viewport points, without scrolling.
+    /// Missing or unmaterialized views return `None`; several matches fail.
+    /// A nested text uses its containing text view's bounds. Transforms,
+    /// clipping and occlusion are not reflected in headless bounds.
+    pub fn bounds(&self, selector: &str) -> Result<Option<Bounds<Points>>, String> {
+        match self.view(&Selector::parse(selector)?) {
+            Pick::None => Ok(None),
+            Pick::One(id) => Ok(self.bounds_in_root(id)),
+            Pick::Many(n) => Err(format!(
+                "`{selector}` matches {n} views: say which (`{selector} >> nth=0`)"
+            )),
+            Pick::Disabled => unreachable!("view queries include disabled views"),
+        }
+    }
+
     /// View `id`'s bounds in the root's points: its frame moved by those
     /// of the views around it and the offsets of the scroll views around
     /// it (transforms aside).
@@ -1892,6 +1907,45 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn geometry_queries_read_offscreen_materialized_rows_without_scrolling() {
+        let mut screen = Screen::default();
+        screen.set_viewport(Size::new(Points(320.0), Points(480.0)));
+        screen.apply(&batch(vec![
+            create(2, ViewKind::Scroll),
+            create(4, ViewKind::Text),
+            create(6, ViewKind::Text),
+            text(4, "row"),
+            text(6, "row"),
+            frame(2, 10.0, 20.0, 300.0, 80.0),
+            frame(4, 5.0, 900.0, 100.0, 20.0),
+            frame(6, 5.0, 950.0, 100.0, 20.0),
+            insert(1, 2),
+            insert(2, 4),
+            insert(2, 6),
+        ]));
+        screen.scroll_mut(2).unwrap().y = Points(100.0);
+        assert!(screen.matches("text:row").unwrap());
+        let expected = Bounds::new(
+            Point::new(Points(15.0), Points(820.0)),
+            Size::new(Points(100.0), Points(20.0)),
+        );
+        screen.nodes.get_mut(&4).unwrap().disabled = true;
+        assert_eq!(screen.bounds("view:4"), Ok(Some(expected)));
+        assert_eq!(screen.scroll(2).unwrap().y, Points(100.0));
+        assert_eq!(screen.bounds("id:missing"), Ok(None));
+        assert!(
+            screen
+                .bounds("text:row")
+                .unwrap_err()
+                .contains("matches 2 views")
+        );
+        assert_eq!(screen.bounds("text:row >> nth=0"), Ok(Some(expected)));
+        assert!(screen.bounds("unknown:row").is_err());
+        screen.apply(&batch(vec![style(2, |s| s.hidden = true)]));
+        assert_eq!(screen.bounds("view:4"), Ok(None));
+    }
 
     /// A canvas over a pressable pad, both inside a plain container.
     fn canvas_screen() -> Screen {
@@ -2235,6 +2289,7 @@ mod tests {
         assert_eq!(pick(&screen, "Privacy"), Pick::One(102));
         assert_eq!(pick(&screen, "text:Terms 🙂"), Pick::One(100));
         assert_eq!(screen.span(102), Some((4, 26, 33)));
+        assert_eq!(screen.bounds("text:Privacy"), screen.bounds("view:4"));
         // They are not texts of their own.
         assert_eq!(screen.texts(), ["Agree to the Terms 🙂 and Privacy"]);
         screen.apply(&batch(vec![linked(Vec::new())]));

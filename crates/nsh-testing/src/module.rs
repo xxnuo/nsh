@@ -1825,6 +1825,20 @@ impl App {
         self.with(|app| app.shows(&selector))
     }
 
+    /// The matched view's current bounds in viewport points, without scrolling
+    /// or input. Returns `null` for no materialized match or unavailable native
+    /// geometry; several matches throw. Nested text uses its text container.
+    /// Bounds are not clipped and do not prove visibility through overlays or
+    /// the keyboard. Headless bounds use layout and scroll offsets, not transforms.
+    pub fn bounds(&self, selector: String) -> Result<Option<Bounds<Points>>, JsError> {
+        self.with(|app| app.bounds(&selector))
+    }
+
+    /// The current viewport's size in points, without resizing or input.
+    pub fn viewport(&self) -> Result<Size<Points>, JsError> {
+        self.with(|app| app.viewport())
+    }
+
     /// The texts on screen now, in order.
     pub fn texts(&self) -> Result<Vec<String>, JsError> {
         self.with(|app| app.texts())

@@ -529,6 +529,11 @@ impl Headless {
         &self.screen
     }
 
+    /// The current viewport size, in points.
+    pub fn viewport(&self) -> Size<Points> {
+        self.viewport
+    }
+
     /// The engine and the batches not applied yet, for a model of the
     /// test's own.
     pub fn into_parts(self) -> (Engine, Receiver<MountBatch>) {
